@@ -1,0 +1,165 @@
+﻿@page "/chatbox"
+@using System.Text.Json;
+@using BlazorChatBox.Client.Hubs
+@using Microsoft.AspNetCore.SignalR.Client;
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject HttpClient Http
+
+
+<PageTitle>Chat Box</PageTitle>
+
+<h1>Chat Box</h1>
+
+
+
+<label for="UsernameInput">Enter your username:</label>
+<input type="text" @bind="userName" id = "UsernameInput" />
+<button @onclick="@(() => { DisplayChat(); ValidUser(); })">Enter</button>
+
+
+    <p>
+      <b>
+        <label color="red">
+            @invalidMsg
+        </label>
+      </b>
+    </p>
+
+@if (validUser == true)
+{
+    <p>
+        <MudText Typo="Typo.h6">Chat in the box!</MudText>
+        <input type="text" @bind="textInput" id = "TextBoxInput" />
+        <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary" OnClick="@SendChat">Send</MudButton>
+    </p>
+
+    <InputFile OnChange="@SendFile"/> 
+    <button @onclick="@SendImg">Send File</button>
+}
+
+
+
+
+
+<div style="width:700px;height:500px;line-height:3em;overflow:scroll;padding:5px;">
+@if (validUser == true)
+{
+        foreach (var log in Logs)
+        {
+         if(log.Contains("file: "))
+          {
+          <DisplayLogComponent name=@log path=@log />
+
+          }
+          else
+          {
+             <ul> <li> <MudText>@log</MudText> </li> </ul>
+          }
+        }    
+      
+}
+  </div>
+
+@code
+{
+    // @implements IAsyncDisposable
+    private string userName = String.Empty;
+    private string textInput = String.Empty;
+    public List<string> Logs = new();
+    string invalidMsg = String.Empty;
+    bool validUser = false;
+    private HubConnection? hubConnection;
+    static FileInfo pathToWrite = new FileInfo(@"F:\chatlog test\ChatLogs.txt");
+    string? logFileName { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/chathub"))
+            .Build();
+        //Receive message 
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+        {
+            var encodedMsg = $"{user}: {message}";
+            Logs.Add(encodedMsg);
+            InvokeAsync(StateHasChanged);
+        });
+        //Receive img
+        hubConnection.On<bool>("ReceiveImg", (didImgSend) =>
+        {
+            if(didImgSend == true)
+            {
+                DisplayChat();
+            }
+            InvokeAsync(StateHasChanged);
+            didImgSend = false;
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    public async Task SendImg()
+    {
+        bool didImgSend = true;
+        await hubConnection.SendAsync("SendImg", didImgSend);
+    }
+
+    public async Task SendChat()
+    {
+        string log = $"{userName}: {textInput}";
+        await Http.PostAsJsonAsync("Save", log);
+        await hubConnection.SendAsync("SendMessage", userName, textInput);
+    }
+
+    public async Task SendFile(InputFileChangeEventArgs e)
+    {
+        string fileName = e.File.Name;
+        logFileName = fileName;
+        MemoryStream ms = new MemoryStream();
+        await e.File.OpenReadStream(maxAllowedSize: 8000000).CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        SendFileViewModel fileSend = new()
+            {
+                FileData = bytes,
+                FileName = fileName,
+           };
+        // send fileName to chatlogs
+        await Http.PostAsJsonAsync("Save", $"{userName}: file: {fileName}");
+        // send file info for saving img to server
+        await Http.PostAsJsonAsync("Save/file", fileSend);
+        StateHasChanged();
+    }
+
+    public async Task DisplayChat()
+    {
+        Console.WriteLine("DisplayLogs has been called.");
+        Logs = await Http.GetFromJsonAsync<List<string>>("GetLog");
+        StateHasChanged();
+    }
+
+    public void ValidUser()
+    {
+
+        if (!string.IsNullOrWhiteSpace(userName))
+        {
+            validUser = true;
+        }
+        else
+        {
+            invalidMsg = "Name invalid, try again!";
+        }
+    }
+
+ /*   public async ValueTask DisposeAsync()= fileName
+        };
+        // send file to be saved
+        await Http.P
+    {
+
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }*/
+}

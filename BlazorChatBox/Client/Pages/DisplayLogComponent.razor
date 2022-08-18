@@ -1,0 +1,113 @@
+﻿@using System.Text
+@inject HttpClient Http
+<p style = "text-indent: 16px"> 
+<label>@userName</label>
+<img src=@img height="90" width="90" />
+</p>
+@code {
+
+    [Parameter]
+    public string Name {get; set;}
+    [Parameter]
+    public string Path {get; set;}
+    string img;
+    string userName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        //reformat log for retrieval of image
+        var currentLog = reformatFileName(Path);
+        string imgSrc = await getImgSrc(currentLog);
+        img = ImgTypeConversion(imgSrc, currentLog);
+        //reformat log for chat display
+        string newName = RemoveFile(Name, true);
+        userName = newName;
+        StateHasChanged();
+    }
+
+    public string reformatFileName(string fileName)
+    {
+        string newFileName = RemoveUserName(fileName);
+        string newFileName2 = RemoveFile(newFileName, false);
+        return newFileName2;
+    }
+
+    public string RemoveUserName(string fileName)
+    {
+        StringBuilder newFileName = new StringBuilder();
+
+        //reformat file name
+        if (fileName.Contains(':'))
+        {
+            //To reach the first index of the actual file name
+            int fileNameInt = fileName.IndexOf(':') + 2;
+            for (int i = fileNameInt; i < fileName.Length; i++)
+            {
+                newFileName.Append(fileName[i]);
+            }
+        }
+        else
+        {
+            newFileName.Append(fileName);
+        }
+        return newFileName.ToString();
+    }
+
+    public string RemoveFile(string log, bool isChatLog)
+    {
+        string toRemove = "file: ";
+        string result = string.Empty;
+        int i = log.IndexOf(toRemove);
+        if (isChatLog == true)
+        {
+            int fileStrRemove = log.Length - i;
+            if (i >= 0)
+            {
+                result = log.Remove(i, fileStrRemove);
+            }
+        }
+        else
+        {
+            if (i >= 0)
+            {
+                result = log.Remove(i, toRemove.Length);
+            }
+        }
+        return result;
+    }
+    
+    public string RemoveFilePrefix(string log)
+    {
+        string toRemove = "file: ";
+        string result = string.Empty;
+        int i = log.IndexOf(toRemove);
+        if (i >= 0)
+        {
+            result = log.Remove(i, toRemove.Length);
+        }
+        return result;
+    }
+
+    public async Task<string> getImgSrc(string fileName)
+    {
+        byte[] imgBytes = await Http.GetByteArrayAsync($"GetFile/getFile/{fileName}");
+        var imgsrc = Convert.ToBase64String(imgBytes);
+        return imgsrc;
+    }
+
+    public string ImgTypeConversion(string imgSrc, string log)
+    {
+        var imgDataUrl = string.Empty;
+
+        if(log.EndsWith(".png"))
+        {
+            imgDataUrl = string.Format("data:image/png;base64,{0}", imgSrc);
+        }
+        else if(log.EndsWith(".jpg"))
+        {
+            imgDataUrl = string.Format("data:image/jpeg;base64,{0}", imgSrc);
+        }
+        return imgDataUrl;
+    }
+
+}
